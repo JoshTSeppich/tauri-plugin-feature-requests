@@ -1,0 +1,58 @@
+name: Claude Implements Issue
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  implement:
+    if: github.event.label.name == 'ai-implement'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Claim issue (ai-implement → ai-in-progress)
+        run: |
+          gh issue edit ${{ github.event.issue.number }} \
+            --add-label "ai-in-progress" \
+            --remove-label "ai-implement"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: "--max-turns 30"
+          prompt: |
+            You are implementing GitHub Issue #${{ github.event.issue.number }} in the `tauri-plugin-feature-requests` Rust crate.
+
+            ## Issue
+            **Title:** ${{ github.event.issue.title }}
+
+            **Body:**
+            ${{ github.event.issue.body }}
+
+            ## Instructions
+            1. Read CLAUDE.md first for codebase context and conventions.
+            2. Implement the change described in the issue. Keep the change minimal and focused.
+            3. Run `cargo build` to verify it compiles. Fix any errors before continuing.
+            4. Run `cargo clippy -- -D warnings` and fix any warnings.
+            5. Create a branch named `ai/issue-${{ github.event.issue.number }}` from main.
+            6. Commit your changes with a clear message referencing the issue number.
+            7. Open a PR targeting `main` with:
+               - Title: matching the issue title
+               - Body: summary of changes + "Closes #${{ github.event.issue.number }}"
+            8. After the PR is opened, add the label `ai-pr-opened` to issue #${{ github.event.issue.number }}.
+
+            Stick to the minimal change needed. Do not refactor unrelated code.
